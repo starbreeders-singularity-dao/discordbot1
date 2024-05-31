@@ -1,4 +1,6 @@
 const { Client, GatewayIntentBits } = require('discord.js');
+const { createClient } = require('@supabase/supabase-js');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -11,6 +13,8 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
 
 let isBotRunning = false;
 
@@ -29,15 +33,43 @@ module.exports = {
             console.log('Discord bot is ready and connected!');
         });
         
-        client.on('messageCreate', message => {
-            console.log(`Received message: ${message.content}`);
+        client.on('messageCreate', async message => {
+            const supabase = createClient(supabaseUrl, supabaseKey);
+
             if (message.content === '!invite') {
-                message.channel.send('Your invite code is: YOUR_INVITE_CODE');
-                console.log('Sent invite code');
+                try {
+                    if (!message.author?.id) throw new Error('No author ID found in message');
+
+                    const { data, error } = await supabase
+                        .from("accounts")
+                        .select("*")
+                        .eq("discord_id", message.author.id);
+                    
+                    if (error) throw new Error('Failed to get data from Supabase:', error);
+
+                    if (data.length) {
+                        message.channel.send('Your invite code is: ' + data[0].invitation_code);
+                        return;
+                    } else {
+                        const code = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 6).toUpperCase();
+                        const { data, error } = await supabase
+                            .from("accounts")
+                            .insert([{ discord_id: message.author.id, invitation_code: code }]);
+
+                        if (error) {
+                            throw new Error('Failed to insert data to Supabase:', error);
+                        }
+                        
+                        message.channel.send('Your invite code is: ' + code);
+                    }
+                } catch (err) {
+                    console.error('Failed to retrieve invite code:', err);
+                    message.channel.send('Failed to retrieve your invite code.');
+                }
             }
         });
     },
-    stop: () => {
+    stop: (callback) => {
         if (!isBotRunning) {
             console.log('Discord bot is not running.');
             if (callback) callback();
