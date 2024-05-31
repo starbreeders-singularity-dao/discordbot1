@@ -31,4 +31,8 @@ client.on('messageCreate', message => {
     }
 });
 
-client.login(DISCORD_TOKEN).catch(err => console.error('Failed to login:', err));
+module.exports = {
+    start: () => {
+        client.login(DISCORD_TOKEN).catch(err => console.error('Failed to login:', err));
+    }
+};
