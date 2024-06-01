@@ -1,5 +1,13 @@
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const { createClient } = require('@supabase/supabase-js');
+const dotenv = require('dotenv');
+dotenv.config();
+
+const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
 
 const client = new Client({
     intents: [
@@ -9,12 +17,7 @@ const client = new Client({
     ]
 });
 
-const dotenv = require('dotenv');
-dotenv.config();
-
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let isBotRunning = false;
 
@@ -26,45 +29,53 @@ module.exports = {
         }
 
         client.login(DISCORD_TOKEN)
-            .then(() => {isBotRunning = true;})
+            .then(() => { isBotRunning = true; })
             .catch(err => console.error('Failed to login:', err));
 
-        client.once('ready', () => {
+        client.once('ready', async () => {
             console.log('Discord bot is ready and connected!');
+
+            const commands = [
+                new SlashCommandBuilder()
+                    .setName('invite')
+                    .setDescription('Get your invite code'),
+            ].map(command => command.toJSON());
+
+            const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
+
+            try {
+                console.log('Started refreshing application (/) commands.');
+
+                await rest.put(
+                    Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+                    { body: commands },
+                );
+
+                console.log('Successfully reloaded application (/) commands.');
+            } catch (error) {
+                console.error(error);
+            }
         });
-        
-        client.on('messageCreate', async message => {
-            const supabase = createClient(supabaseUrl, supabaseKey);
 
-            if (message.content === '!invite') {
-                try {
-                    if (!message.author?.id) throw new Error('No author ID found in message');
+        client.on('interactionCreate', async interaction => {
+            if (!interaction.isCommand()) return;
 
-                    const { data, error } = await supabase
-                        .from("accounts")
-                        .select("*")
-                        .eq("discord_id", message.author.id);
-                    
-                    if (error) throw new Error('Failed to get data from Supabase:', error);
+            const { commandName } = interaction;
 
-                    if (data.length) {
-                        message.channel.send('Your invite code is: ' + data[0].invitation_code);
-                        return;
-                    } else {
-                        const code = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 6).toUpperCase();
-                        const { data, error } = await supabase
-                            .from("accounts")
-                            .insert([{ discord_id: message.author.id, invitation_code: code }]);
+            if (commandName === 'invite') {
+                const inviteCode = 'AVATAR';
+                const { data, error } = await supabase
+                    .from('accounts')
+                    .select('invitation_code')
+                    .eq('invitation_code', inviteCode)
+                    .limit(1);
 
-                        if (error) {
-                            throw new Error('Failed to insert data to Supabase:', error);
-                        }
-                        
-                        message.channel.send('Your invite code is: ' + code);
-                    }
-                } catch (err) {
-                    console.error('Failed to retrieve invite code:', err);
-                    message.channel.send('Failed to retrieve your invite code.');
+                if (error || data.length === 0) {
+                    console.error('Error fetching invite code:', error);
+                    await interaction.reply({ content: 'Failed to retrieve invite code.', ephemeral: true });
+                } else {
+                    await interaction.reply({ content: `Your invite code is: ${data[0].invitation_code}`, ephemeral: true });
+                    console.log('Sent invite code');
                 }
             }
         });
