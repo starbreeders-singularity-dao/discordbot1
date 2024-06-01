@@ -35,7 +35,7 @@ module.exports = {
 
             const commands = [
                 new SlashCommandBuilder()
-                    .setName('invite')
+                    .setName('beamit')
                     .setDescription('Get your invite code'),
             ].map(command => command.toJSON());
 
@@ -60,7 +60,7 @@ module.exports = {
 
             const { commandName } = interaction;
 
-            if (commandName === 'invite') {
+            if (commandName === 'beamit') {
                 const supabase = createClient(supabaseUrl, supabaseKey);
 
                 try {
