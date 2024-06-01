@@ -17,8 +17,6 @@ const client = new Client({
     ]
 });
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 let isBotRunning = false;
 
 module.exports = {
@@ -63,19 +61,36 @@ module.exports = {
             const { commandName } = interaction;
 
             if (commandName === 'invite') {
-                const inviteCode = 'AVATAR';
-                const { data, error } = await supabase
-                    .from('accounts')
-                    .select('invitation_code')
-                    .eq('invitation_code', inviteCode)
-                    .limit(1);
+                const supabase = createClient(supabaseUrl, supabaseKey);
 
-                if (error || data.length === 0) {
-                    console.error('Error fetching invite code:', error);
-                    await interaction.reply({ content: 'Failed to retrieve invite code.', ephemeral: true });
-                } else {
-                    await interaction.reply({ content: `Your invite code is: ${data[0].invitation_code}`, ephemeral: true });
-                    console.log('Sent invite code');
+                try {
+                    if (!interaction.user?.id) throw new Error('No author ID found in interaction');
+
+                    const { data, error } = await supabase
+                        .from("accounts")
+                        .select("*")
+                        .eq("discord_id", interaction.user.id);
+
+                    if (error) throw new Error('Failed to get data from Supabase:', error);
+
+                    if (data.length) {
+                        await interaction.reply({ content: 'Your invite code is: ' + data[0].invitation_code, ephemeral: true });
+                        return;
+                    } else {
+                        const code = Math.random().toString(36).replace(/[^a-z]+/g, '').substr(0, 6).toUpperCase();
+                        const { data, error } = await supabase
+                            .from("accounts")
+                            .insert([{ discord_id: interaction.user.id, invitation_code: code }]);
+
+                        if (error) {
+                            throw new Error('Failed to insert data to Supabase:', error);
+                        }
+
+                        await interaction.reply({ content: 'Your invite code is: ' + code, ephemeral: true });
+                    }
+                } catch (err) {
+                    console.error('Failed to retrieve invite code:', err);
+                    await interaction.reply({ content: 'Failed to retrieve your invite code.', ephemeral: true });
                 }
             }
         });
